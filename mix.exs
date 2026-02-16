@@ -277,10 +277,11 @@ defmodule Raxol.MixProject do
       {:stream_data, "~> 1.1", only: [:dev, :test]},
       {:junit_formatter, "~> 3.4", only: :test},
 
-      # Benchmarking suite
-      {:benchee, "~> 1.3", only: [:dev, :test]},
-      {:benchee_html, "~> 1.0", only: [:dev, :test]},
-      {:benchee_json, "~> 1.0", only: [:dev, :test]}
+      # Benchmarking suite (optional — only needed for mix raxol.bench tasks)
+      {:benchee, "~> 1.3", optional: true},
+      {:benchee_html, "~> 1.0", optional: true},
+      {:benchee_json, "~> 1.0", optional: true},
+      {:deep_merge, "~> 1.0", optional: true}
     ]
   end
 

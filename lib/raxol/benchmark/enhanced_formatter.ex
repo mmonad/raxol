@@ -6,7 +6,9 @@ defmodule Raxol.Benchmark.EnhancedFormatter do
 
   alias Raxol.Benchmark.Config
 
-  @behaviour Benchee.Formatter
+  if Code.ensure_loaded?(Benchee.Formatter) do
+    @behaviour Benchee.Formatter
+  end
 
   @doc """
   Format benchmark results with enhanced analysis and insights.

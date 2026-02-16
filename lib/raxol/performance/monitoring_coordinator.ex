@@ -288,8 +288,10 @@ defmodule Raxol.Performance.MonitoringCoordinator do
   end
 
   defp merge_user_config(base_config, user_config) do
-    # Deep merge user config with base config
-    DeepMerge.deep_merge(base_config, user_config)
+    Map.merge(base_config, user_config, fn
+      _k, v1, v2 when is_map(v1) and is_map(v2) -> Map.merge(v1, v2)
+      _k, _v1, v2 -> v2
+    end)
   end
 
   defp start_all_components(config) do
