@@ -107,6 +107,7 @@ defmodule Raxol.Core.Runtime.Lifecycle do
              pm_pid,
              registry_table
            ) do
+      maybe_start_driver(dispatcher_pid, options)
       {:ok, registry_table, pm_pid, initialized_model, dispatcher_pid}
     end
   end
@@ -286,21 +287,119 @@ defmodule Raxol.Core.Runtime.Lifecycle do
 
   @impl true
   def handle_info(:render_needed, state) do
-    Raxol.Core.Runtime.Log.debug(
-      "[#{__MODULE__}] Received :render_needed. Passing through or logging."
+    case GenServer.call(state.dispatcher_pid, :get_render_context) do
+      {:ok, %{model: model}} ->
+        if function_exported?(state.app_module, :view, 1) do
+          view_tree = state.app_module.view(model)
+          render_view(view_tree, state)
+        end
+
+      _ ->
+        :ok
+    end
+
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info(msg, %{dispatcher_pid: nil} = state) do
+    Log.warning_with_context(
+      "[#{__MODULE__}] Received message with no dispatcher: #{inspect(msg)}",
+      %{}
     )
 
     {:noreply, state}
   end
 
   @impl true
-  def handle_info(unhandled_message, state) do
-    Raxol.Core.Runtime.Log.warning_with_context(
-      "[#{__MODULE__}] Unhandled info message: #{inspect(unhandled_message)}",
-      %{}
-    )
-
+  def handle_info(msg, state) do
+    GenServer.cast(state.dispatcher_pid, {:external_info, msg})
     {:noreply, state}
+  end
+
+  defp maybe_start_driver(dispatcher_pid, options) do
+    if Keyword.get(options, :terminal_driver, true) do
+      case Raxol.Terminal.Driver.start_link(dispatcher_pid: dispatcher_pid) do
+        {:ok, _pid} ->
+          :ok
+
+        {:error, reason} ->
+          Log.warning_with_context(
+            "[#{__MODULE__}] Terminal driver failed to start: #{inspect(reason)}",
+            %{}
+          )
+
+          :ok
+      end
+    else
+      :ok
+    end
+  end
+
+  defp render_view(view_tree, _state) do
+    IO.write("\e[2J\e[H")
+    do_render(view_tree)
+  end
+
+  defp do_render(elements) when is_list(elements) do
+    Enum.each(elements, &do_render/1)
+  end
+
+  defp do_render({:text, attrs, content}) do
+    fg = Keyword.get(attrs, :fg)
+    styles = Keyword.get(attrs, :style, [])
+
+    prefix = ansi_prefix(fg, styles)
+    suffix = if prefix != "", do: "\e[0m", else: ""
+
+    IO.write(prefix <> to_string(content) <> suffix)
+  end
+
+  defp do_render({:box, _attrs, children}) do
+    do_render(children)
+  end
+
+  defp do_render({type, attrs, children})
+       when type in [:column, :row, :flex] do
+    direction = Keyword.get(attrs, :direction, type)
+    separator = if direction == :row, do: " ", else: "\n"
+
+    children
+    |> List.wrap()
+    |> Enum.intersperse({:text, [], separator})
+    |> Enum.each(&do_render/1)
+
+    if direction != :row, do: IO.write("\n")
+  end
+
+  defp do_render(_other), do: :ok
+
+  @ansi_colors %{
+    black: "30",
+    red: "31",
+    green: "32",
+    yellow: "33",
+    blue: "34",
+    magenta: "35",
+    cyan: "36",
+    white: "37"
+  }
+
+  defp ansi_prefix(fg, styles) do
+    codes =
+      (if(fg, do: [Map.get(@ansi_colors, fg, "37")], else: []) ++
+         Enum.map(styles, fn
+           :bold -> "1"
+           :underline -> "4"
+           :italic -> "3"
+           _ -> nil
+         end))
+      |> Enum.reject(&is_nil/1)
+
+    case codes do
+      [] -> ""
+      codes -> "\e[#{Enum.join(codes, ";")}m"
+    end
   end
 
   defp maybe_process_initial_commands(%State{} = state) do

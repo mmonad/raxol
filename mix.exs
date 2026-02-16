@@ -91,12 +91,14 @@ defmodule Raxol.MixProject do
   end
 
   # Platform-specific compilers
-  # Only include :elixir_make on Unix (for termbox2 NIF)
-  # Windows uses pure Elixir IOTerminal driver
+  # Only include :elixir_make on Unix when termbox2 source is present.
+  # Falls back to pure Elixir IOTerminal driver when NIF can't be built.
   defp compilers do
-    case :os.type() do
-      {:unix, _} -> Mix.compilers() ++ [:elixir_make]
-      {:win32, _} -> Mix.compilers()
+    termbox2_src = Path.join([__DIR__, "lib", "termbox2_nif", "c_src", "termbox2", "termbox2.h"])
+
+    case {:os.type(), File.exists?(termbox2_src)} do
+      {{:unix, _}, true} -> Mix.compilers() ++ [:elixir_make]
+      _ -> Mix.compilers()
     end
   end
 

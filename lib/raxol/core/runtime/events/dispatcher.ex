@@ -307,6 +307,25 @@ defmodule Raxol.Core.Runtime.Events.Dispatcher do
     {:noreply, state}
   end
 
+  @impl true
+  def handle_manager_cast({:external_info, msg}, state) do
+    case Application.delegate_update(
+           state.app_module,
+           {:info, msg},
+           state.model
+         ) do
+      {updated_model, commands}
+      when is_map(updated_model) and is_list(commands) ->
+        context = build_command_context(state)
+        process_commands(commands, context, state.command_module)
+        send(state.runtime_pid, :render_needed)
+        {:noreply, %{state | model: updated_model}}
+
+      _ ->
+        {:noreply, state}
+    end
+  end
+
   # Catch-all for other cast messages
   @impl true
   def handle_manager_cast(msg, state) do
