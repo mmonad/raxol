@@ -58,7 +58,7 @@ defmodule Raxol.Core.Runtime.Events.Dispatcher do
       debug_mode: initial_state.debug_mode,
       plugin_manager: initial_state.plugin_manager,
       command_registry_table: initial_state.command_registry_table,
-      current_theme_id: UserPreferences.get_theme_id(),
+      current_theme_id: safe_get_theme_id(),
       command_module: command_module
     }
 
@@ -505,8 +505,20 @@ defmodule Raxol.Core.Runtime.Events.Dispatcher do
   end
 
   defp apply_theme_update(false, state, updated_model, new_theme_id) do
-    :ok = UserPreferences.set("theme.active_id", new_theme_id)
+    _ = safe_set_theme_id(new_theme_id)
     %{state | model: updated_model, current_theme_id: new_theme_id}
+  end
+
+  defp safe_get_theme_id do
+    UserPreferences.get_theme_id()
+  catch
+    :exit, _ -> :default
+  end
+
+  defp safe_set_theme_id(theme_id) do
+    UserPreferences.set("theme.active_id", theme_id)
+  catch
+    :exit, _ -> :ok
   end
 
   defp broadcast_event_if_valid(event_type, event_data)

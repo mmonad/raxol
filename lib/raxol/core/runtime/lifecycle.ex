@@ -238,24 +238,15 @@ defmodule Raxol.Core.Runtime.Lifecycle do
       {:ok, model} ->
         {:ok, model}
 
-      {_, model} ->
-        Raxol.Core.Runtime.Log.warning_with_context(
-          "[#{__MODULE__}] #{inspect(app_module)}.init returned a tuple, using model: #{inspect(model)}",
-          %{}
-        )
-
+      {model, commands} when is_map(model) and is_list(commands) ->
         {:ok, model}
 
       model when is_map(model) ->
-        Raxol.Core.Runtime.Log.info(
-          "[#{__MODULE__}] #{inspect(app_module)}.init returned a map directly, using model: #{inspect(model)}"
-        )
-
         {:ok, model}
 
       _ ->
         Raxol.Core.Runtime.Log.warning_with_context(
-          "[#{__MODULE__}] #{inspect(app_module)}.init(#{inspect(initial_model_args)}) did not return {:ok, model} or a map. Using empty model.",
+          "[#{__MODULE__}] #{inspect(app_module)}.init(#{inspect(initial_model_args)}) did not return {:ok, model}, {model, commands}, or a map. Using empty model.",
           %{}
         )
 
@@ -271,6 +262,8 @@ defmodule Raxol.Core.Runtime.Lifecycle do
 
     new_state = %{state | dispatcher_ready: true}
     updated_state = maybe_process_initial_commands(new_state)
+    # Trigger initial render now that the Dispatcher is ready
+    send(self(), :render_needed)
     {:noreply, updated_state}
   end
 
@@ -345,34 +338,39 @@ defmodule Raxol.Core.Runtime.Lifecycle do
     Enum.each(elements, &do_render/1)
   end
 
-  defp do_render({:text, attrs, content}) do
-    fg = Keyword.get(attrs, :fg)
-    styles = Keyword.get(attrs, :style, [])
-
-    prefix = ansi_prefix(fg, styles)
+  # Map-based view tree (produced by Raxol View DSL)
+  defp do_render(%{type: :text} = node) do
+    prefix = ansi_prefix(node[:fg], style_list(node[:style]))
     suffix = if prefix != "", do: "\e[0m", else: ""
-
-    IO.write(prefix <> to_string(content) <> suffix)
+    IO.write(prefix <> to_string(node[:content] || "") <> suffix)
   end
 
-  defp do_render({:box, _attrs, children}) do
+  defp do_render(%{type: :box, children: children}) do
     do_render(children)
   end
 
-  defp do_render({type, attrs, children})
-       when type in [:column, :row, :flex] do
-    direction = Keyword.get(attrs, :direction, type)
-    separator = if direction == :row, do: " ", else: "\n"
+  defp do_render(%{type: :flex, direction: dir, children: children}) do
+    separator = if dir == :row, do: " ", else: "\n"
 
     children
-    |> List.wrap()
-    |> Enum.intersperse({:text, [], separator})
+    |> Enum.intersperse(%{type: :text, content: separator})
     |> Enum.each(&do_render/1)
 
-    if direction != :row, do: IO.write("\n")
+    if dir != :row, do: IO.write("\n")
   end
 
   defp do_render(_other), do: :ok
+
+  # Normalize style to a list of atoms (handles map or list input)
+  defp style_list(%{} = map) do
+    Enum.flat_map(map, fn
+      {k, true} when is_atom(k) -> [k]
+      _ -> []
+    end)
+  end
+
+  defp style_list(list) when is_list(list), do: list
+  defp style_list(_), do: []
 
   @ansi_colors %{
     black: "30",
@@ -382,7 +380,8 @@ defmodule Raxol.Core.Runtime.Lifecycle do
     blue: "34",
     magenta: "35",
     cyan: "36",
-    white: "37"
+    white: "37",
+    light_black: "90"
   }
 
   defp ansi_prefix(fg, styles) do
