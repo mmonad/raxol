@@ -201,7 +201,7 @@ defmodule Raxol.Terminal.TerminalUtils do
           {:ok, pos_integer(), pos_integer()} | {:error, term()}
   def detect_with_stty do
     case Raxol.Core.ErrorHandling.safe_call(fn ->
-           case System.cmd("stty", ["size"]) do
+           case System.cmd("stty", ["size"], stderr_to_stdout: true) do
              {output, 0} ->
                output = String.trim(output)
 
@@ -242,13 +242,9 @@ defmodule Raxol.Terminal.TerminalUtils do
   """
   @spec real_tty?() :: boolean()
   def real_tty? do
-    case System.cmd("tty", []) do
-      {tty, 0} ->
-        tty = String.trim(tty)
-        tty != "not a tty" and String.starts_with?(tty, "/dev/")
-
-      _ ->
-        false
+    case :io.getopts(:standard_io) do
+      {:ok, opts} -> Keyword.get(opts, :terminal, false)
+      _ -> false
     end
   end
 end

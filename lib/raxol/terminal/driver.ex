@@ -84,7 +84,7 @@ defmodule Raxol.Terminal.Driver do
 
     # Get original terminal settings
     output =
-      case System.cmd("stty", ["size"]) do
+      case System.cmd("stty", ["size"], stderr_to_stdout: true) do
         {output, 0} -> String.trim(output)
         # fallback to default size as a string
         {_, _} -> "80 24"
@@ -564,7 +564,7 @@ defmodule Raxol.Terminal.Driver do
   end
 
   defp stty_size_fallback do
-    case System.cmd("stty", ["size"]) do
+    case System.cmd("stty", ["size"], stderr_to_stdout: true) do
       {output, 0} ->
         [height, width] = String.split(String.trim(output), " ")
         {:ok, String.to_integer(width), String.to_integer(height)}
