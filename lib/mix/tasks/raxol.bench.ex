@@ -45,6 +45,7 @@ defmodule Mix.Tasks.Raxol.Bench do
     - Regression analysis reports
     - Baseline metrics for future comparison
   """
+  @compile {:no_warn_undefined, [Benchee, Benchee.Formatters.Console, Benchee.Formatters.HTML, Benchee.Formatters.JSON, Benchee.Formatter]}
 
   use Mix.Task
 

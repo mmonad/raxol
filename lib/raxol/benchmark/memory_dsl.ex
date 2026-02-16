@@ -24,6 +24,7 @@ defmodule Raxol.Benchmark.MemoryDSL do
       assert_no_memory_regression baseline: "v1.5.4"
     end
   """
+  @compile {:no_warn_undefined, [Benchee, Benchee.Formatters.Console, Benchee.Formatters.HTML, Benchee.Formatters.JSON, Benchee.Formatter]}
 
   alias Raxol.Benchmark.MemoryAnalyzer
 

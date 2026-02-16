@@ -12,6 +12,7 @@ defmodule Mix.Tasks.Raxol.Bench.Memory do
     mix raxol.bench.memory --profile          # Include memory profiling integration
     mix raxol.bench.memory --quick            # Quick memory benchmark run
   """
+  @compile {:no_warn_undefined, [Benchee, Benchee.Formatters.Console, Benchee.Formatters.HTML, Benchee.Formatters.JSON, Benchee.Formatter]}
 
   use Mix.Task
 

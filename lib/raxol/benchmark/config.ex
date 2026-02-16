@@ -10,6 +10,7 @@ defmodule Raxol.Benchmark.Config do
   - Regression detection with configurable sensitivity
   - Benchmark metadata and tagging
   """
+  @compile {:no_warn_undefined, [Benchee, Benchee.Formatters.Console, Benchee.Formatters.HTML, Benchee.Formatters.JSON, Benchee.Formatter]}
 
   require Logger
 

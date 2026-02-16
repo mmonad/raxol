@@ -12,6 +12,7 @@ defmodule Mix.Tasks.Raxol.Bench.MemoryAnalysis do
     mix raxol.bench.memory_analysis --scenario terminal_operations
     mix raxol.bench.memory_analysis --with-dashboard
   """
+  @compile {:no_warn_undefined, [Benchee, Benchee.Formatters.Console, Benchee.Formatters.HTML, Benchee.Formatters.JSON, Benchee.Formatter]}
 
   use Mix.Task
   alias Raxol.Benchmark.{MemoryAnalyzer, MemoryDashboard}
