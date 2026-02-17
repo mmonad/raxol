@@ -329,39 +329,113 @@ defmodule Raxol.Core.Runtime.Lifecycle do
     end
   end
 
-  defp render_view(view_tree, _state) do
-    IO.write("\e[2J\e[H")
-    do_render(view_tree)
+  defp render_view(view_tree, state) do
+    w = state.width
+    lines = render_to_lines(view_tree, w)
+    IO.write("\e[2J\e[H" <> Enum.join(lines, "\n") <> "\n")
   end
 
-  defp do_render(elements) when is_list(elements) do
-    Enum.each(elements, &do_render/1)
+  # --- ANSI Renderer: view tree → list of line strings ---
+
+  defp render_to_lines(tree, w) do
+    tree
+    |> flatten_tree(w)
+    |> List.flatten()
   end
 
-  # Map-based view tree (produced by Raxol View DSL)
-  defp do_render(%{type: :text} = node) do
-    prefix = ansi_prefix(node[:fg], style_list(node[:style]))
-    suffix = if prefix != "", do: "\e[0m", else: ""
-    IO.write(prefix <> to_string(node[:content] || "") <> suffix)
+  # Lists
+  defp flatten_tree(elements, w) when is_list(elements) do
+    Enum.flat_map(elements, &flatten_tree(&1, w))
   end
 
-  defp do_render(%{type: :box, children: children}) do
-    do_render(children)
+  # Text node → single line
+  defp flatten_tree(%{type: :text} = node, _w) do
+    content = to_string(node[:content] || "")
+    [ansi_wrap(content, node[:fg], style_list(node[:style]))]
   end
 
-  defp do_render(%{type: :flex, direction: dir, children: children}) do
-    separator = if dir == :row, do: " ", else: "\n"
+  # Box with border
+  defp flatten_tree(%{type: :box, border: border} = node, w)
+       when border != nil and border != :none do
+    {tl, tr, bl, br, h, v} = border_chars(border)
+    inner_w = max(w - 2, 0)
+    children = node[:children] || []
+    inner = Enum.flat_map(children, &flatten_tree(&1, inner_w))
+    # Pad inner lines to inner_w
+    inner = Enum.map(inner, &pad_line(&1, inner_w))
 
-    children
-    |> Enum.intersperse(%{type: :text, content: separator})
-    |> Enum.each(&do_render/1)
+    top = ansi_wrap(tl <> String.duplicate(h, inner_w) <> tr, node[:fg], [])
+    bottom = ansi_wrap(bl <> String.duplicate(h, inner_w) <> br, node[:fg], [])
 
-    if dir != :row, do: IO.write("\n")
+    middle =
+      Enum.map(inner, fn line ->
+        ansi_wrap(v, node[:fg], []) <> line <> ansi_wrap(v, node[:fg], [])
+      end)
+
+    [top | middle] ++ [bottom]
   end
 
-  defp do_render(_other), do: :ok
+  # Box without border
+  defp flatten_tree(%{type: :box} = node, w) do
+    children = node[:children] || []
+    Enum.flat_map(children, &flatten_tree(&1, w))
+  end
 
-  # Normalize style to a list of atoms (handles map or list input)
+  # Flex row — place children on one line
+  defp flatten_tree(%{type: :flex, direction: :row} = node, w) do
+    children = node[:children] || []
+    parts = Enum.map(children, fn child -> flatten_tree(child, w) end)
+
+    texts =
+      Enum.map(parts, fn
+        [single] -> single
+        lines -> Enum.join(lines, " ")
+      end)
+
+    case node[:justify] do
+      :space_between when length(texts) == 2 ->
+        [left, right] = texts
+        gap = max(w - visible_len(left) - visible_len(right), 1)
+        [left <> String.duplicate(" ", gap) <> right]
+
+      _ ->
+        [Enum.join(texts, " ")]
+    end
+  end
+
+  # Flex column — stack vertically
+  defp flatten_tree(%{type: :flex, direction: :column} = node, w) do
+    children = node[:children] || []
+    Enum.flat_map(children, &flatten_tree(&1, w))
+  end
+
+  defp flatten_tree(%{type: :flex} = node, w) do
+    flatten_tree(%{node | direction: :column}, w)
+  end
+
+  # Fallback
+  defp flatten_tree(_other, _w), do: []
+
+  # --- Helpers ---
+
+  defp pad_line(line, w) do
+    len = visible_len(line)
+    pad = max(w - len, 0)
+    line <> String.duplicate(" ", pad)
+  end
+
+  defp visible_len(str) do
+    str
+    |> String.replace(~r/\e\[[0-9;]*m/, "")
+    |> String.length()
+  end
+
+  defp border_chars(:single), do: {"┌", "┐", "└", "┘", "─", "│"}
+  defp border_chars(:double), do: {"╔", "╗", "╚", "╝", "═", "║"}
+  defp border_chars(:rounded), do: {"╭", "╮", "╰", "╯", "─", "│"}
+  defp border_chars(:bold), do: {"┏", "┓", "┗", "┛", "━", "┃"}
+  defp border_chars(_), do: {"┌", "┐", "└", "┘", "─", "│"}
+
   defp style_list(%{} = map) do
     Enum.flat_map(map, fn
       {k, true} when is_atom(k) -> [k]
@@ -383,6 +457,11 @@ defmodule Raxol.Core.Runtime.Lifecycle do
     white: "37",
     light_black: "90"
   }
+
+  defp ansi_wrap(text, fg, styles) do
+    prefix = ansi_prefix(fg, styles)
+    if prefix != "", do: prefix <> text <> "\e[0m", else: text
+  end
 
   defp ansi_prefix(fg, styles) do
     codes =
