@@ -348,10 +348,13 @@ defmodule Raxol.Core.Runtime.Lifecycle do
     Enum.flat_map(elements, &flatten_tree(&1, w))
   end
 
-  # Text node → single line
+  # Text node → one line per \n-delimited segment
   defp flatten_tree(%{type: :text} = node, _w) do
     content = to_string(node[:content] || "")
-    [ansi_wrap(content, node[:fg], style_list(node[:style]))]
+
+    content
+    |> String.split("\n")
+    |> Enum.map(&ansi_wrap(&1, node[:fg], style_list(node[:style])))
   end
 
   # Box with border
